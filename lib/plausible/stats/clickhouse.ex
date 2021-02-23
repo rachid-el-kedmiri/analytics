@@ -534,8 +534,9 @@ defmodule Plausible.Stats.Clickhouse do
     if Enum.count(result) > 0 do
       pages = Enum.map(result, fn r -> r[:name] end)
 
+      total_pageview_q = %Query{query | filters: Map.delete(query.filters, "page") }
       event_q =
-        from(e in base_query_w_sessions_bare(site, query, true),
+        from(e in base_query_w_sessions_bare(site, total_pageview_q),
           group_by: e.pathname,
           where: fragment("? IN tuple(?)", e.pathname, ^pages),
           where: e.name == "pageview",
@@ -942,13 +943,6 @@ defmodule Plausible.Stats.Clickhouse do
       )
 
     sessions_q =
-      if session_pageviews do
-        sessions_q |> filter_converted_sessions(site, query)
-      else
-        sessions_q
-      end
-
-    sessions_q =
       if query.filters["source"] do
         source = query.filters["source"]
         source = if source == @no_ref, do: "", else: source
@@ -1064,7 +1058,7 @@ defmodule Plausible.Stats.Clickhouse do
            query.filters["utm_source"] || query.filters["utm_campaign"] || query.filters["screen"] ||
            query.filters["browser"] || query.filters["browser_version"] || query.filters["os"] ||
            query.filters["os_version"] || query.filters["country"] || query.filters["entry_page"] ||
-           query.filters["exit_page"] || (session_pageviews && query.filters["page"]) do
+           query.filters["exit_page"] do
         from(
           e in q,
           join: sq in subquery(sessions_q),
@@ -1075,7 +1069,7 @@ defmodule Plausible.Stats.Clickhouse do
       end
 
     q =
-      if query.filters["page"] && !session_pageviews do
+      if query.filters["page"] do
         page = query.filters["page"]
         from(e in q, where: e.pathname == ^page)
       else
